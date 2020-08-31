@@ -40,7 +40,7 @@ func (gr *GlooRouter) Reconcile(canary *flaggerv1.Canary) error {
 						Namespace: canary.Namespace,
 					},
 				},
-				Weight: 1000,
+				Weight: 1000, //It is 1000 in order to support more granular traffic shifts
 			},
 			{
 				Destination: gloov1.Destination{
@@ -56,6 +56,8 @@ func (gr *GlooRouter) Reconcile(canary *flaggerv1.Canary) error {
 
 	upstreamGroup, err := gr.glooClient.GlooV1().UpstreamGroups(canary.Namespace).Get(context.TODO(), apexName, metav1.GetOptions{})
 	if errors.IsNotFound(err) {
+		// UpstreamGroup is managed by pes-bravoservice helm chart
+
 		//upstreamGroup = &gloov1.UpstreamGroup{
 		//	ObjectMeta: metav1.ObjectMeta{
 		//		Name:      apexName,
@@ -129,7 +131,7 @@ func (gr *GlooRouter) GetRoutes(canary *flaggerv1.Canary) (
 
 	for _, dst := range upstreamGroup.Spec.Destinations {
 		if dst.Destination.Upstream.Name == primaryName {
-			primaryWeight = int(dst.Weight) / 10
+			primaryWeight = int(dst.Weight) / 10 //Since we use 1000 as base value and flagger use 100
 			canaryWeight = 100 - primaryWeight
 			return
 		}
@@ -167,7 +169,7 @@ func (gr *GlooRouter) SetRoutes(
 						Namespace: canary.Namespace,
 					},
 				},
-				Weight: uint32(primaryWeight * 10),
+				Weight: uint32(primaryWeight * 10),//Since we use 1000 as base value and flagger use 100
 			},
 			{
 				Destination: gloov1.Destination{
@@ -176,7 +178,7 @@ func (gr *GlooRouter) SetRoutes(
 						Namespace: canary.Namespace,
 					},
 				},
-				Weight: uint32(canaryWeight * 10),
+				Weight: uint32(canaryWeight * 10),//Since we use 1000 as base value and flagger use 100
 			},
 		},
 	}

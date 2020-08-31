@@ -1,15 +1,16 @@
 TAG?=latest
 VERSION?=$(shell grep 'VERSION' pkg/version/version.go | awk '{ print $$4 }' | tr -d '"')
 LT_VERSION?=$(shell grep 'VERSION' cmd/loadtester/main.go | awk '{ print $$4 }' | tr -d '"' | head -n1)
+DOCKER_REPO?=harbor.central.dev.didevops.com/platform/flagger
 
 build:
 	GIT_COMMIT=$$(git rev-list -1 HEAD) && CGO_ENABLED=0 GOOS=linux go build  \
 		-ldflags "-s -w -X github.com/weaveworks/flagger/pkg/version.REVISION=$${GIT_COMMIT}" \
 		-a -installsuffix cgo -o ./bin/flagger ./cmd/flagger/*
-	docker build -t harbor.central.dev.didevops.com/platform/flagger:$(TAG) . -f Dockerfile
+	docker build -t $(DOCKER_REPO):$(TAG) . -f Dockerfile
 
 push:
-	docker push harbor.central.dev.didevops.com/platform/flagger:$(TAG)
+	docker push $(DOCKER_REPO):$(TAG)
 
 fmt:
 	gofmt -l -s -w ./
