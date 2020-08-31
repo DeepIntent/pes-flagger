@@ -190,7 +190,31 @@ func (gr *GlooRouter) SetRoutes(
 	return nil
 }
 
-func (gr *GlooRouter) Finalize(_ *flaggerv1.Canary) error {
-	//todo delete canary dest from upstreamgroup
+func (gr *GlooRouter) Finalize(canary *flaggerv1.Canary) error {
+	apexName, _, _ := canary.GetServiceNames()
+	primaryName := fmt.Sprintf("%s-%v", apexName, canary.Spec.Service.Port)
+
+	upstreamGroup, err := gr.glooClient.GlooV1().UpstreamGroups(canary.Namespace).Get(context.TODO(), apexName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("UpstreamGroup %s.%s query error: %w", apexName, canary.Namespace, err)
+	}
+	//todo append instead of override
+	upstreamGroup.Spec = gloov1.UpstreamGroupSpec{
+		Destinations: []gloov1.WeightedDestination{
+			{
+				Destination: gloov1.Destination{
+					Upstream: gloov1.ResourceRef{
+						Name:      primaryName,
+						Namespace: canary.Namespace,
+					},
+				},
+				Weight: uint32(1000),//Since we use 1000 as base value and flagger use 100
+			},
+		},
+	}
+	_, err = gr.glooClient.GlooV1().UpstreamGroups(canary.Namespace).Update(context.TODO(), upstreamGroup, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("UpstreamGroup %s.%s update error: %w", apexName, canary.Namespace, err)
+	}
 	return nil
 }

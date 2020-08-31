@@ -1,0 +1,29 @@
+pipeline:
+  image: platform/go:1.15
+  stages:
+    "Build Binary":
+      cache:
+        - path: /gopath
+      env:
+        GOPATH: /gopath
+        CGO_ENABLED: 0
+        GOOS: linux
+      steps:
+        - |
+          go mod download
+          go build \
+            -ldflags "-s -w -X github.com/weaveworks/flagger/pkg/version.REVISION={{ codebase.revisionId }}" \
+            -a -installsuffix cgo -o bin/flagger ./cmd/flagger/*.go
+    
+    "Build Docker Image":
+      imageBuild: &imageBuild
+        push: false
+        tags:
+          - 1.1.0.pes1.0
+
+    "Deploy Docker Image":
+      branch: master
+      imageBuild:
+        <<: *imageBuild
+        push: true
+        
