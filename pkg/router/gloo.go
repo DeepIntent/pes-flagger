@@ -35,7 +35,6 @@ func (gr *GlooRouter) Reconcile(canary *flaggerv1.Canary) error {
 		return fmt.Errorf("UpstreamGroup %s.%s get query error: %w", apexName, canary.Namespace, err)
 	}
 
-
 	var newDestinations []gloov1.WeightedDestination
 	var canaryDestination *gloov1.WeightedDestination
 
@@ -58,7 +57,7 @@ func (gr *GlooRouter) Reconcile(canary *flaggerv1.Canary) error {
 				Weight: uint32(0),
 			})
 	} else {
-		newDestinations = make([]gloov1.WeightedDestination, len(upstreamGroup.Spec.Destinations) + 1)
+		newDestinations = make([]gloov1.WeightedDestination, len(upstreamGroup.Spec.Destinations)+1)
 		for i, dst := range upstreamGroup.Spec.Destinations {
 			newDestinations = append(newDestinations, dst)
 			if dst.Destination.Upstream.Name == canaryName {
@@ -67,7 +66,6 @@ func (gr *GlooRouter) Reconcile(canary *flaggerv1.Canary) error {
 		}
 	}
 
-	upstreamGroup.Spec.Destinations = newDestinations
 	clone := upstreamGroup.DeepCopy()
 	clone.Spec.Destinations = newDestinations
 
@@ -133,7 +131,7 @@ func (gr *GlooRouter) SetRoutes(
 
 	for _, dst := range upstreamGroup.Spec.Destinations {
 		if dst.Destination.Upstream.Name == canaryName {
-			dst.Weight = uint32(canaryWeight * 10)
+			dst.Weight = uint32(canaryWeight * 10) //Since we use 1000 as base value and flagger use 100
 			break
 		}
 	}
@@ -162,13 +160,16 @@ func (gr *GlooRouter) Finalize(canary *flaggerv1.Canary) error {
 		}
 	}
 
-	upstreamGroup.Spec.Destinations[idx] = upstreamGroup.Spec.Destinations[len(upstreamGroup.Spec.Destinations)-1]
-	upstreamGroup.Spec.Destinations[len(upstreamGroup.Spec.Destinations)-1] = gloov1.WeightedDestination{}
-	upstreamGroup.Spec.Destinations = upstreamGroup.Spec.Destinations[:len(upstreamGroup.Spec.Destinations)-1]
+	upstreamGroup.Spec.Destinations = remove(upstreamGroup.Spec.Destinations, idx)
 
 	_, err = gr.glooClient.GlooV1().UpstreamGroups(canary.Namespace).Update(context.TODO(), upstreamGroup, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("UpstreamGroup %s.%s update error: %w", apexName, canary.Namespace, err)
 	}
 	return nil
+}
+
+func remove(s [] gloov1.WeightedDestination, i int) []gloov1.WeightedDestination {
+	s[i] = s[len(s)-1]
+	return s[:len(s)-1]
 }
