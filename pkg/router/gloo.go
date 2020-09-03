@@ -123,9 +123,9 @@ func (gr *GlooRouter) SetRoutes(
 		return fmt.Errorf("UpstreamGroup %s.%s query error: %w", apexName, canary.Namespace, err)
 	}
 
-	for _, dst := range upstreamGroup.Spec.Destinations {
+	for i, dst := range upstreamGroup.Spec.Destinations {
 		if dst.Destination.Upstream.Name == canaryName {
-			dst.Weight = uint32(canaryWeight * 10) //Since we use 1000 as base value and flagger use 100
+			upstreamGroup.Spec.Destinations[i].Weight = uint32(canaryWeight * 10) //Since we use 1000 as base value and flagger use 100
 			break
 		}
 	}
