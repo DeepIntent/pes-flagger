@@ -52,7 +52,7 @@ func (c *KubernetesDefaultRouter) Reconcile(canary *flaggerv1.Canary) error {
 	apexName, _, _ := canary.GetServiceNames()
 
 	// main svc
-	err := c.reconcileService(canary, apexName, fmt.Sprintf("%s-primary", canary.Spec.TargetRef.Name), canary.Spec.Service.Apex)
+	err := c.reconcileMainService(canary, apexName, fmt.Sprintf("%s-primary", canary.Spec.TargetRef.Name))
 	if err != nil {
 		return fmt.Errorf("reconcileService failed: %w", err)
 	}
@@ -66,6 +66,24 @@ func (c *KubernetesDefaultRouter) SetRoutes(_ *flaggerv1.Canary, _ int, _ int) e
 
 func (c *KubernetesDefaultRouter) GetRoutes(_ *flaggerv1.Canary) (primaryRoute int, canaryRoute int, err error) {
 	return 0, 0, nil
+}
+
+func (c *KubernetesDefaultRouter) reconcileMainService(canary *flaggerv1.Canary, name string, podSelector string) error  {
+	svc, err := c.kubeClient.CoreV1().Services(canary.Namespace).Get(context.TODO(), name, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("service %s get query error: %w", name, err)
+	}
+
+	svc.Spec.Selector = map[string]string{c.labelSelector: podSelector}
+
+	_, err = c.kubeClient.CoreV1().Services(canary.Namespace).Update(context.TODO(), svc, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("service %s update error: %w", name, err)
+	}
+	c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
+		Infof("Service %s updated", svc.GetName())
+
+	return nil
 }
 
 func (c *KubernetesDefaultRouter) reconcileService(canary *flaggerv1.Canary, name string, podSelector string, metadata *flaggerv1.CustomMetadata) error {

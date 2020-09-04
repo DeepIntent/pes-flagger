@@ -62,13 +62,6 @@ func (gr *GlooRouter) Reconcile(canary *flaggerv1.Canary) error {
 			return fmt.Errorf("UpstreamGroup %s.%s update error: %w", apexName, canary.Namespace, err)
 		}
 	}
-	//else {
-	//	canaryDestination.Weight = 0
-	//}
-
-	gr.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
-		Infof("UpstreamGroup %s.%s has NO update", upstreamGroup.GetName(), canary.Namespace)
-
 	return nil
 }
 
