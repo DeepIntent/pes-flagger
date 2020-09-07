@@ -2,7 +2,6 @@ package router
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/google/go-cmp/cmp"
@@ -30,16 +29,16 @@ type KubernetesDefaultRouter struct {
 
 // Initialize creates the primary and canary services
 func (c *KubernetesDefaultRouter) Initialize(canary *flaggerv1.Canary) error {
-	_, primaryName, canaryName := canary.GetServiceNames()
+	_, primaryName, _ := canary.GetServiceNames()
 
 	// canary svc
-	err := c.reconcileService(canary, canaryName, canary.Spec.TargetRef.Name, canary.Spec.Service.Canary)
-	if err != nil {
-		return fmt.Errorf("reconcileService failed: %w", err)
-	}
+	//err := c.reconcileService(canary, canaryName, canary.Spec.TargetRef.Name, canary.Spec.Service.Canary)
+	//if err != nil {
+	//	return fmt.Errorf("reconcileService failed: %w", err)
+	//}
 
 	// primary svc
-	err = c.reconcileService(canary, primaryName, fmt.Sprintf("%s-primary", canary.Spec.TargetRef.Name), canary.Spec.Service.Primary)
+	err := c.reconcileService(canary, primaryName, fmt.Sprintf("%s-primary", canary.Spec.TargetRef.Name), canary.Spec.Service.Primary)
 	if err != nil {
 		return fmt.Errorf("reconcileService failed: %w", err)
 	}
@@ -232,35 +231,6 @@ func (c *KubernetesDefaultRouter) reconcileService(canary *flaggerv1.Canary, nam
 
 // Finalize reverts the apex router if not owned by the Flagger controller.
 func (c *KubernetesDefaultRouter) Finalize(canary *flaggerv1.Canary) error {
-	apexName, _, _ := canary.GetServiceNames()
-
-	svc, err := c.kubeClient.CoreV1().Services(canary.Namespace).Get(context.TODO(), apexName, metav1.GetOptions{})
-	if err != nil {
-		return fmt.Errorf("service %s.%s get query error: %w", apexName, canary.Namespace, err)
-	}
-
-	// No need to do any reconciliation if the router is owned by the controller
-	if hasCanaryOwnerRef, isOwned := c.isOwnedByCanary(svc, canary.Name); !hasCanaryOwnerRef && !isOwned {
-		// If kubectl annotation is present that will be utilized, else reconcile
-		if a, ok := svc.Annotations[kubectlAnnotation]; ok {
-			var storedSvc corev1.Service
-			if err := json.Unmarshal([]byte(a), &storedSvc); err != nil {
-				return fmt.Errorf("router %s.%s failed to unMarshal annotation %s",
-					svc.Name, svc.Namespace, kubectlAnnotation)
-			}
-			clone := svc.DeepCopy()
-			clone.Spec.Selector = storedSvc.Spec.Selector
-
-			if _, err := c.kubeClient.CoreV1().Services(canary.Namespace).Update(context.TODO(), clone, metav1.UpdateOptions{}); err != nil {
-				return fmt.Errorf("service %s update error: %w", clone.Name, err)
-			}
-		} else {
-			err = c.reconcileService(canary, apexName, canary.Spec.TargetRef.Name, nil)
-			if err != nil {
-				return fmt.Errorf("reconcileService failed: %w", err)
-			}
-		}
-	}
 	return nil
 }
 
