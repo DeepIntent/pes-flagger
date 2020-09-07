@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 	gloov1 "github.com/weaveworks/flagger/pkg/apis/gloo/v1"
 	"go.uber.org/zap"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -29,82 +27,41 @@ type GlooRouter struct {
 func (gr *GlooRouter) Reconcile(canary *flaggerv1.Canary) error {
 	apexName, _, _ := canary.GetServiceNames()
 	canaryName := fmt.Sprintf("%s-canary-%v", apexName, canary.Spec.Service.Port)
-	primaryName := fmt.Sprintf("%s-%v", apexName, canary.Spec.Service.Port)
 
-	newSpec := gloov1.UpstreamGroupSpec{
-		Destinations: []gloov1.WeightedDestination{
-			{
-				Destination: gloov1.Destination{
-					Upstream: gloov1.ResourceRef{
-						Name:      primaryName,
-						Namespace: canary.Namespace,
-					},
-				},
-				Weight: 1000, //It is 1000 in order to support more granular traffic shifts
-			},
-			{
+	upstreamGroup, err := gr.glooClient.GlooV1().UpstreamGroups(canary.Namespace).Get(context.TODO(), apexName, metav1.GetOptions{})
+	if errors.IsNotFound(err) {
+		return fmt.Errorf("UpstreamGroup %s.%s not found", apexName, canary.Namespace)
+	} else if err != nil {
+		return fmt.Errorf("UpstreamGroup %s.%s get query error: %w", apexName, canary.Namespace, err)
+	}
+
+	var canaryDestination *gloov1.WeightedDestination
+
+	for _, dst := range upstreamGroup.Spec.Destinations {
+		if dst.Destination.Upstream.Name == canaryName {
+			canaryDestination = &dst
+			break
+		}
+	}
+
+	if canaryDestination == nil {
+		var newDestinations []gloov1.WeightedDestination
+		newDestinations = append(newDestinations, upstreamGroup.Spec.Destinations...)
+		upstreamGroup.Spec.Destinations = append(newDestinations,
+			gloov1.WeightedDestination{
 				Destination: gloov1.Destination{
 					Upstream: gloov1.ResourceRef{
 						Name:      canaryName,
 						Namespace: canary.Namespace,
 					},
 				},
-				Weight: 0,
-			},
-		},
-	}
-
-	upstreamGroup, err := gr.glooClient.GlooV1().UpstreamGroups(canary.Namespace).Get(context.TODO(), apexName, metav1.GetOptions{})
-	if errors.IsNotFound(err) {
-		// UpstreamGroup is managed by pes-bravoservice helm chart
-
-		//upstreamGroup = &gloov1.UpstreamGroup{
-		//	ObjectMeta: metav1.ObjectMeta{
-		//		Name:      apexName,
-		//		Namespace: canary.Namespace,
-		//		OwnerReferences: []metav1.OwnerReference{
-		//			*metav1.NewControllerRef(canary, schema.GroupVersionKind{
-		//				Group:   flaggerv1.SchemeGroupVersion.Group,
-		//				Version: flaggerv1.SchemeGroupVersion.Version,
-		//				Kind:    flaggerv1.CanaryKind,
-		//			}),
-		//		},
-		//	},
-		//	Spec: newSpec,
-		//}
-		//
-		//_, err = gr.glooClient.GlooV1().UpstreamGroups(canary.Namespace).Create(context.TODO(), upstreamGroup, metav1.CreateOptions{})
-		//if err != nil {
-		//	return fmt.Errorf("UpstreamGroup %s.%s create error: %w", apexName, canary.Namespace, err)
-		//}
-		//gr.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
-		//	Infof("UpstreamGroup %s.%s created", upstreamGroup.GetName(), canary.Namespace)
-		//return nil
-
-		return fmt.Errorf("UpstreamGroup %s.%s not found", apexName, canary.Namespace)
-	} else if err != nil {
-		return fmt.Errorf("UpstreamGroup %s.%s get query error: %w", apexName, canary.Namespace, err)
-	}
-
-	// update upstreamGroup but keep the original destination weights
-	if upstreamGroup != nil {
-		if diff := cmp.Diff(
-			newSpec,
-			upstreamGroup.Spec,
-			cmpopts.IgnoreFields(gloov1.WeightedDestination{}, "Weight"),
-		); diff != "" {
-			clone := upstreamGroup.DeepCopy()
-			clone.Spec = newSpec
-
-			_, err = gr.glooClient.GlooV1().UpstreamGroups(canary.Namespace).Update(context.TODO(), clone, metav1.UpdateOptions{})
-			if err != nil {
-				return fmt.Errorf("UpstreamGroup %s.%s update error: %w", apexName, canary.Namespace, err)
-			}
-			gr.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).
-				Infof("UpstreamGroup %s.%s updated", upstreamGroup.GetName(), canary.Namespace)
+				Weight: uint32(0),
+			})
+		_, err = gr.glooClient.GlooV1().UpstreamGroups(canary.Namespace).Update(context.TODO(), upstreamGroup, metav1.UpdateOptions{})
+		if err != nil {
+			return fmt.Errorf("UpstreamGroup %s.%s update error: %w", apexName, canary.Namespace, err)
 		}
 	}
-
 	return nil
 }
 
@@ -116,7 +73,7 @@ func (gr *GlooRouter) GetRoutes(canary *flaggerv1.Canary) (
 	err error,
 ) {
 	apexName := canary.Spec.TargetRef.Name
-	primaryName := fmt.Sprintf("%s-%v", canary.Spec.TargetRef.Name, canary.Spec.Service.Port)
+	canaryName := fmt.Sprintf("%s-canary-%v", apexName, canary.Spec.Service.Port)
 
 	upstreamGroup, err := gr.glooClient.GlooV1().UpstreamGroups(canary.Namespace).Get(context.TODO(), apexName, metav1.GetOptions{})
 	if err != nil {
@@ -130,13 +87,13 @@ func (gr *GlooRouter) GetRoutes(canary *flaggerv1.Canary) (
 	}
 
 	for _, dst := range upstreamGroup.Spec.Destinations {
-		if dst.Destination.Upstream.Name == primaryName {
-			primaryWeight = int(dst.Weight) / 10 //Since we use 1000 as base value and flagger use 100
-			canaryWeight = 100 - primaryWeight
+		if dst.Destination.Upstream.Name == canaryName {
+			canaryWeight = int(dst.Weight) / 10 //Since we use 1000 as base value and flagger use 100
+			primaryWeight = 100 - canaryWeight
 			return
 		}
 	}
-
+	err = fmt.Errorf("UpstreamGroup %s.%s canary destination not found", apexName, canary.Namespace)
 	return
 }
 
@@ -149,7 +106,6 @@ func (gr *GlooRouter) SetRoutes(
 ) error {
 	apexName, _, _ := canary.GetServiceNames()
 	canaryName := fmt.Sprintf("%s-canary-%v", apexName, canary.Spec.Service.Port)
-	primaryName := fmt.Sprintf("%s-%v", apexName, canary.Spec.Service.Port)
 
 	if primaryWeight == 0 && canaryWeight == 0 {
 		return fmt.Errorf("RoutingRule %s.%s update failed: no valid weights", apexName, canary.Namespace)
@@ -159,28 +115,12 @@ func (gr *GlooRouter) SetRoutes(
 	if err != nil {
 		return fmt.Errorf("UpstreamGroup %s.%s query error: %w", apexName, canary.Namespace, err)
 	}
-	//todo append instead of override
-	upstreamGroup.Spec = gloov1.UpstreamGroupSpec{
-		Destinations: []gloov1.WeightedDestination{
-			{
-				Destination: gloov1.Destination{
-					Upstream: gloov1.ResourceRef{
-						Name:      primaryName,
-						Namespace: canary.Namespace,
-					},
-				},
-				Weight: uint32(primaryWeight * 10),//Since we use 1000 as base value and flagger use 100
-			},
-			{
-				Destination: gloov1.Destination{
-					Upstream: gloov1.ResourceRef{
-						Name:      canaryName,
-						Namespace: canary.Namespace,
-					},
-				},
-				Weight: uint32(canaryWeight * 10),//Since we use 1000 as base value and flagger use 100
-			},
-		},
+
+	for i, dst := range upstreamGroup.Spec.Destinations {
+		if dst.Destination.Upstream.Name == canaryName {
+			upstreamGroup.Spec.Destinations[i].Weight = uint32(canaryWeight * 10) //Since we use 1000 as base value and flagger use 100
+			break
+		}
 	}
 
 	_, err = gr.glooClient.GlooV1().UpstreamGroups(canary.Namespace).Update(context.TODO(), upstreamGroup, metav1.UpdateOptions{})
@@ -192,29 +132,28 @@ func (gr *GlooRouter) SetRoutes(
 
 func (gr *GlooRouter) Finalize(canary *flaggerv1.Canary) error {
 	apexName, _, _ := canary.GetServiceNames()
-	primaryName := fmt.Sprintf("%s-%v", apexName, canary.Spec.Service.Port)
+	canaryName := fmt.Sprintf("%s-canary-%v", apexName, canary.Spec.Service.Port)
 
 	upstreamGroup, err := gr.glooClient.GlooV1().UpstreamGroups(canary.Namespace).Get(context.TODO(), apexName, metav1.GetOptions{})
 	if err != nil {
 		return fmt.Errorf("UpstreamGroup %s.%s query error: %w", apexName, canary.Namespace, err)
 	}
-	//todo append instead of override
-	upstreamGroup.Spec = gloov1.UpstreamGroupSpec{
-		Destinations: []gloov1.WeightedDestination{
-			{
-				Destination: gloov1.Destination{
-					Upstream: gloov1.ResourceRef{
-						Name:      primaryName,
-						Namespace: canary.Namespace,
-					},
-				},
-				Weight: uint32(1000),//Since we use 1000 as base value and flagger use 100
-			},
-		},
+
+	for i, dst := range upstreamGroup.Spec.Destinations {
+		if dst.Destination.Upstream.Name == canaryName {
+			upstreamGroup.Spec.Destinations = remove(upstreamGroup.Spec.Destinations, i)
+			break
+		}
 	}
+
 	_, err = gr.glooClient.GlooV1().UpstreamGroups(canary.Namespace).Update(context.TODO(), upstreamGroup, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("UpstreamGroup %s.%s update error: %w", apexName, canary.Namespace, err)
 	}
 	return nil
+}
+
+func remove(s [] gloov1.WeightedDestination, i int) []gloov1.WeightedDestination {
+	s[i] = s[len(s)-1]
+	return s[:len(s)-1]
 }
