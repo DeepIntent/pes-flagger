@@ -17,7 +17,7 @@ pipeline:
     
     "Build Docker Image":
       imageBuild: &imageBuild
-        push: true
+        push: false
         tags:
           - 1.1.0.pes1.0-1
 
