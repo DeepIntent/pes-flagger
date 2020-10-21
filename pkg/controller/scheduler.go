@@ -67,14 +67,14 @@ func (c *Controller) scheduleCanaries() {
 	}
 
 	// check if multiple canaries have the same target
-	for canaryName, targetName := range current {
-		for name, target := range current {
-			if name != canaryName && target == targetName {
-				c.logger.With("canary", canaryName).
-					Errorf("Bad things will happen! Found more than one canary with the same target %s", targetName)
-			}
-		}
-	}
+	//for canaryName, targetName := range current {
+	//	for name, target := range current {
+	//		if name != canaryName && target == targetName {
+	//			c.logger.With("canary", canaryName).
+	//				Errorf("Bad things will happen! Found more than one canary with the same target %s", targetName)
+	//		}
+	//	}
+	//}
 
 	// set total canaries per namespace metric
 	for k, v := range stats {
@@ -100,21 +100,21 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 
 	// init controller based on target kind
 	canaryController := c.canaryFactory.Controller(cd.Spec.TargetRef.Kind)
-	labelSelector, ports, err := canaryController.GetMetadata(cd)
-	if err != nil {
-		c.recordEventWarningf(cd, "%v", err)
-		return
-	}
+	labelSelector, _, err := canaryController.GetMetadata(cd)
+	//if err != nil {
+	//	c.recordEventWarningf(cd, "%v", err)
+	//	return
+	//}
 
 	// init Kubernetes router
-	kubeRouter := c.routerFactory.KubernetesRouter(cd.Spec.TargetRef.Kind, labelSelector, ports)
+	//kubeRouter := c.routerFactory.KubernetesRouter(cd.Spec.TargetRef.Kind, labelSelector, ports)
 
 	// reconcile the canary/primary services
-	if err := kubeRouter.Initialize(cd); err != nil {
-		c.recordEventWarningf(cd, "%v", err)
-		return
-	}
-
+	//if err := kubeRouter.Initialize(cd); err != nil {
+	//	c.recordEventWarningf(cd, "%v", err)
+	//	return
+	//}
+	//
 	// check metric servers' availability
 	if !cd.SkipAnalysis() && (cd.Status.Phase == "" || cd.Status.Phase == flaggerv1.CanaryPhaseInitializing) {
 		if err := c.checkMetricProviderAvailability(cd); err != nil {
@@ -135,17 +135,17 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 	}
 
 	// create primary workload
-	err = canaryController.Initialize(cd)
-	if err != nil {
-		c.recordEventWarningf(cd, "%v", err)
-		return
-	}
+	//err = canaryController.Initialize(cd)
+	//if err != nil {
+	//	c.recordEventWarningf(cd, "%v", err)
+	//	return
+	//}
 
 	// change the apex service pod selector to primary
-	if err := kubeRouter.Reconcile(cd); err != nil {
-		c.recordEventWarningf(cd, "%v", err)
-		return
-	}
+	//if err := kubeRouter.Reconcile(cd); err != nil {
+	//	c.recordEventWarningf(cd, "%v", err)
+	//	return
+	//}
 
 	// take over an existing virtual service or ingress
 	// runs after the primary is ready to ensure zero downtime
@@ -157,21 +157,21 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 	}
 
 	// check for changes
-	shouldAdvance, err := c.shouldAdvance(cd, canaryController)
-	if err != nil {
-		c.recordEventWarningf(cd, "%v", err)
-		return
-	}
-
-	if !shouldAdvance {
-		c.recorder.SetStatus(cd, cd.Status.Phase)
-		return
-	}
+	//shouldAdvance, err := c.shouldAdvance(cd, canaryController)
+	//if err != nil {
+	//	c.recordEventWarningf(cd, "%v", err)
+	//	return
+	//}
+	//
+	//if !shouldAdvance {
+	//	c.recorder.SetStatus(cd, cd.Status.Phase)
+	//	return
+	//}
 
 	// check gates
-	if isApproved := c.runConfirmRolloutHooks(cd, canaryController); !isApproved {
-		return
-	}
+	//if isApproved := c.runConfirmRolloutHooks(cd, canaryController); !isApproved {
+	//	return
+	//}
 
 	// set max weight default value to 100%
 	maxWeight := 100
@@ -180,12 +180,12 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 	}
 
 	// check primary status
-	if !cd.SkipAnalysis() {
-		if err := canaryController.IsPrimaryReady(cd); err != nil {
-			c.recordEventWarningf(cd, "%v", err)
-			return
-		}
-	}
+	//if !cd.SkipAnalysis() {
+	//	if err := canaryController.IsPrimaryReady(cd); err != nil {
+	//		c.recordEventWarningf(cd, "%v", err)
+	//		return
+	//	}
+	//}
 
 	// get the routing settings
 	primaryWeight, canaryWeight, mirrored, err := meshRouter.GetRoutes(cd)
@@ -197,7 +197,7 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 	c.recorder.SetWeight(cd, primaryWeight, canaryWeight)
 
 	// check if canary analysis should start (canary revision has changes) or continue
-	if ok := c.checkCanaryStatus(cd, canaryController, shouldAdvance); !ok {
+	if ok := c.checkCanaryStatus(cd, canaryController, true); !ok {
 		return
 	}
 
@@ -236,9 +236,9 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 	}
 
 	// check if analysis should be skipped
-	if skip := c.shouldSkipAnalysis(cd, canaryController, meshRouter); skip {
-		return
-	}
+	//if skip := c.shouldSkipAnalysis(cd, canaryController, meshRouter); skip {
+	//	return
+	//}
 
 	// check if we should rollback
 	if cd.Status.Phase == flaggerv1.CanaryPhaseProgressing ||
@@ -259,10 +259,10 @@ func (c *Controller) advanceCanary(name string, namespace string) {
 
 	// scale canary to zero if promotion has finished
 	if cd.Status.Phase == flaggerv1.CanaryPhaseFinalising {
-		if err := canaryController.ScaleToZero(cd); err != nil {
-			c.recordEventWarningf(cd, "%v", err)
-			return
-		}
+		//if err := canaryController.ScaleToZero(cd); err != nil {
+		//	c.recordEventWarningf(cd, "%v", err)
+		//	return
+		//}
 
 		// set status to succeeded
 		if err := canaryController.SetStatusPhase(cd, flaggerv1.CanaryPhaseSucceeded); err != nil {
@@ -771,16 +771,16 @@ func (c *Controller) rollback(canary *flaggerv1.Canary, canaryController canary.
 	c.recorder.SetWeight(canary, primaryWeight, canaryWeight)
 
 	// shutdown canary
-	if err := canaryController.ScaleToZero(canary); err != nil {
-		c.recordEventWarningf(canary, "%v", err)
-		return
-	}
+	//if err := canaryController.ScaleToZero(canary); err != nil {
+	//	c.recordEventWarningf(canary, "%v", err)
+	//	return
+	//}
 
 	// mark canary as failed
-	if err := canaryController.SyncStatus(canary, flaggerv1.CanaryStatus{Phase: flaggerv1.CanaryPhaseFailed, CanaryWeight: 0}); err != nil {
-		c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).Errorf("%v", err)
-		return
-	}
+	//if err := canaryController.SyncStatus(canary, flaggerv1.CanaryStatus{Phase: flaggerv1.CanaryPhaseFailed, CanaryWeight: 0}); err != nil {
+	//	c.logger.With("canary", fmt.Sprintf("%s.%s", canary.Name, canary.Namespace)).Errorf("%v", err)
+	//	return
+	//}
 
 	c.recorder.SetStatus(canary, flaggerv1.CanaryPhaseFailed)
 	c.runPostRolloutHooks(canary, flaggerv1.CanaryPhaseFailed)
