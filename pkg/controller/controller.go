@@ -240,11 +240,17 @@ func (c *Controller) syncHandler(key string) error {
 		}
 
 		if cd.Status.Phase != flaggerv1.CanaryPhaseTerminated {
-			if err := c.finalize(cd); err != nil {
-				c.logger.With("canary", fmt.Sprintf("%s.%s", cd.Name, cd.Namespace)).
-					Errorf("Unable to finalize canary: %v", err)
-				return fmt.Errorf("unable to finalize to canary %s.%s error: %w", cd.Name, cd.Namespace, err)
+			//if err := c.finalize(cd); err != nil {
+			//	c.logger.With("canary", fmt.Sprintf("%s.%s", cd.Name, cd.Namespace)).
+			//		Errorf("Unable to finalize canary: %v", err)
+			//	return fmt.Errorf("unable to finalize to canary %s.%s error: %w", cd.Name, cd.Namespace, err)
+			//}
+
+			// Revert the mesh objects
+			if err := c.revertMesh(cd); err != nil {
+				return fmt.Errorf("failed to revert mesh: %w", err)
 			}
+			c.logger.Infof("Finalization complete for %s.%s", cd.Name, cd.Namespace)
 		}
 
 		// Remove finalizer from Canary

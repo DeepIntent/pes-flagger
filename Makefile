@@ -1,7 +1,7 @@
 TAG?=latest
 VERSION?=$(shell grep 'VERSION' pkg/version/version.go | awk '{ print $$4 }' | tr -d '"')
 LT_VERSION?=$(shell grep 'VERSION' cmd/loadtester/main.go | awk '{ print $$4 }' | tr -d '"' | head -n1)
-DOCKER_REPO?=harbor.central.dev.didevops.com/platform/flagger
+DOCKER_REPO?=harbor.central.dev.didevops.com/platform/platform-pes-flagger
 
 build:
 	GIT_COMMIT=$$(git rev-list -1 HEAD) && CGO_ENABLED=0 GOOS=linux go build  \
